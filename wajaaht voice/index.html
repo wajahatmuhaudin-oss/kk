@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>JARVIS :: NEURAL_UPLINK</title>
+<meta name="description" content="JARVIS is a browser-based AI voice assistant powered by Claude or ChatGPT, with a hacker terminal interface.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #030509;
+    --green: #00aaff;
+    --green-dim: #0a5a8f;
+    --green-faint: #0a3a5c;
+    --amber: #ffb020;
+    --cyan: #3ad6ff;
+    --red: #ff3b4e;
+    --text: #cfe9ff;
+    --text-dim: #628db3;
+    --text-faint: #2e4d63;
+    --panel: rgba(6, 14, 24, 0.75);
+    --panel-solid: #060e18;
+    --border: rgba(0, 170, 255, 0.22);
+    --border-bright: rgba(0, 170, 255, 0.55);
+    --font-mono: 'JetBrains Mono', 'Share Tech Mono', monospace;
+    --font-term: 'Share Tech Mono', monospace;
+    --ease: cubic-bezier(.22,1,.36,1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: var(--font-mono); min-height: 100vh; overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  select, input, textarea { font: inherit; }
+  p { margin: 0; }
+  :focus-visible { outline: 1px solid var(--green); outline-offset: 3px; }
+
+  /* ---------------- Matrix rain backdrop ---------------- */
+  #matrix-canvas { position: fixed; inset: 0; z-index: -2; opacity: 0.14; pointer-events: none; }
+  .scanlines {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 1px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0) 3px);
+    mix-blend-mode: overlay;
+  }
+  .vignette {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(ellipse 90% 70% at 50% 40%, transparent 40%, rgba(0,0,0,0.75) 100%);
+  }
+
+  /* ---------------- Boot sequence ---------------- */
+  #boot-screen {
+    position: fixed; inset: 0; z-index: 999; background: #000;
+    display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+    transition: opacity .5s var(--ease), visibility .5s var(--ease);
+  }
+  #boot-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+  #boot-log { font-family: var(--font-term); font-size: .82rem; color: var(--green); max-width: 460px; width: 100%; line-height: 1.9; white-space: pre-wrap; }
+  #boot-log .ok { color: var(--green); }
+  #boot-log .dim { color: var(--text-faint); }
+  .boot-cursor { display: inline-block; width: 8px; height: 14px; background: var(--green); animation: blink 0.8s step-end infinite; vertical-align: middle; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  body { display: flex; flex-direction: column; align-items: center; padding: 1.2rem 1rem 2.2rem; }
+
+  .app-header {
+    width: 100%; max-width: 640px; display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 1rem; gap: .8rem;
+    border-bottom: 1px solid var(--border); padding-bottom: .9rem;
+  }
+  .brand { display: flex; align-items: center; gap: .7rem; }
+  .brand-mark {
+    width: 30px; height: 30px; border: 1px solid var(--border-bright); border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--green); font-size: .85rem; font-weight: 700;
+    box-shadow: 0 0 12px rgba(57,255,106,0.25); position: relative; overflow: hidden;
+  }
+  .brand-mark::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(57,255,106,0.4) 50%, transparent 100%);
+    animation: scan-mark 2.4s linear infinite;
+  }
+  @keyframes scan-mark { 0% { transform: translateY(-100%); } 100% { transform: translateY(100%); } }
+  .brand h1 { font-family: var(--font-term); font-size: 1.15rem; letter-spacing: 0.08em; color: #fff; text-transform: uppercase; margin: 0; }
+  .brand h1 .blink-cursor { color: var(--green); animation: blink 1s step-end infinite; }
+  .brand-sub { font-size: .64rem; color: var(--text-faint); letter-spacing: 0.1em; margin-top: 1px; }
+
+  .header-actions { display: flex; align-items: center; gap: .5rem; }
+  .icon-btn {
+    width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 4px; color: var(--green);
+    transition: border-color .18s var(--ease), background .18s var(--ease);
+  }
+  .icon-btn:hover { border-color: var(--green-dim); background: rgba(57,255,106,0.06); }
+
+  .provider-select {
+    background: var(--panel); border: 1px solid var(--border); color: var(--green);
+    padding: .5rem .6rem; border-radius: 3px; font-family: var(--font-mono); font-size: .7rem;
+    min-height: 38px; letter-spacing: .04em;
+  }
+
+  /* ---------------- Readout strip ---------------- */
+  .readout-strip { width: 100%; max-width: 640px; display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; margin-bottom: 1.4rem; }
+  .readout { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: .55rem .7rem; font-size: .66rem; color: var(--text-dim); }
+  .readout .label { display: block; letter-spacing: .08em; color: var(--text-faint); margin-bottom: 2px; }
+  .readout .value { color: var(--green); font-size: .78rem; }
+  .readout .value.idle { color: var(--text-dim); }
+  .readout .value.warn { color: var(--red); }
+
+  /* ---------------- Orb / Arc Reactor ---------------- */
+  .orb-stage { position: relative; width: 100%; max-width: 640px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1rem 1rem 1.6rem; }
+  .orb-wrap { position: relative; width: 260px; height: 260px; display: flex; align-items: center; justify-content: center; }
+
+  /* Concentric HUD rings, arc-reactor style, rotating at different speeds */
+  .reactor-ring { position: absolute; border-radius: 50%; pointer-events: none; }
+  .reactor-ring--1 {
+    inset: 0; border: 1px solid var(--border);
+    background: repeating-conic-gradient(var(--green-faint) 0deg 2deg, transparent 2deg 10deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    animation: spin 26s linear infinite;
+  }
+  .reactor-ring--2 {
+    inset: 14px; border: 1px dashed var(--border-bright); opacity: .55;
+    animation: spin 14s linear infinite reverse;
+  }
+  .reactor-ring--3 {
+    inset: 30px; border: 1px solid var(--green-faint);
+    background: repeating-conic-gradient(var(--border-bright) 0deg 6deg, transparent 6deg 24deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+    animation: spin 9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hud-corners span { position: absolute; width: 18px; height: 18px; border-color: var(--green-dim); border-style: solid; border-width: 0; z-index: 3; }
+  .hud-corners span:nth-child(1) { top: -6px; left: -6px; border-top-width: 2px; border-left-width: 2px; }
+  .hud-corners span:nth-child(2) { top: -6px; right: -6px; border-top-width: 2px; border-right-width: 2px; }
+  .hud-corners span:nth-child(3) { bottom: -6px; left: -6px; border-bottom-width: 2px; border-left-width: 2px; }
+  .hud-corners span:nth-child(4) { bottom: -6px; right: -6px; border-bottom-width: 2px; border-right-width: 2px; }
+
+  .orb-btn {
+    position: relative; width: 140px; height: 140px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #0a1826, #010407 75%);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    transition: box-shadow .25s var(--ease), transform .18s var(--ease), border-color .25s var(--ease);
+    box-shadow: 0 0 0 rgba(0,170,255,0);
+    z-index: 2; overflow: hidden;
+  }
+  .orb-btn:hover { transform: scale(1.03); border-color: var(--green-dim); }
+  .orb-btn:active { transform: scale(0.97); }
+  .orb-btn svg { position: relative; z-index: 2; color: var(--green); transition: color .2s var(--ease), opacity .2s var(--ease); }
+
+  /* Morphing plasma blob core — three blurred rotating blobs layered for a liquid glow */
+  .plasma-blob { position: absolute; inset: 8px; border-radius: 50%; overflow: hidden; z-index: 1; opacity: .55; }
+  .plasma-blob span {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(circle, transparent 45%, rgba(0,170,255,0.35) 70%);
+    border-radius: 40% 60% 62% 38% / 45% 42% 58% 55%;
+  }
+  .plasma-blob span:nth-child(1) { animation: blob-spin1 7s linear infinite; }
+  .plasma-blob span:nth-child(2) { animation: blob-spin2 5s linear infinite reverse; opacity: .8; }
+  .plasma-blob span:nth-child(3) { animation: blob-spin3 9s linear infinite; opacity: .6; }
+  @keyframes blob-spin1 { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes blob-spin2 { from { transform: rotate(0deg) scale(0.9); } to { transform: rotate(-360deg) scale(0.9); } }
+  @keyframes blob-spin3 { from { transform: rotate(0deg) scale(1.05); } to { transform: rotate(360deg) scale(1.05); } }
+
+  .orb-btn.listening { border-color: var(--green); box-shadow: 0 0 46px rgba(0,170,255,0.5), inset 0 0 34px rgba(0,170,255,0.14); animation: pulse-ring 1.4s ease-in-out infinite; }
+  .orb-btn.listening .plasma-blob { opacity: 1; }
+  @keyframes pulse-ring {
+    0%, 100% { box-shadow: 0 0 46px rgba(0,170,255,0.5), inset 0 0 34px rgba(0,170,255,0.14); }
+    50% { box-shadow: 0 0 72px rgba(0,170,255,0.72), inset 0 0 34px rgba(0,170,255,0.22); }
+  }
+  .orb-btn.speaking { border-color: var(--amber); }
+  .orb-btn.speaking svg { color: var(--amber); }
+  .orb-btn.speaking .plasma-blob span { background-image: radial-gradient(circle, transparent 45%, rgba(255,176,32,0.4) 70%); }
+  .orb-btn.thinking { border-color: var(--cyan); animation: pulse-think 0.9s ease-in-out infinite; }
+  @keyframes pulse-think { 0%, 100% { box-shadow: 0 0 24px rgba(58,214,255,0.35); } 50% { box-shadow: 0 0 44px rgba(58,214,255,0.6); } }
+  .orb-btn.thinking svg { color: var(--cyan); opacity: .5; }
+  .orb-wrap.listening .reactor-ring--1 { animation-duration: 6s; }
+  .orb-wrap.listening .reactor-ring--3 { animation-duration: 3s; }
+  .orb-wrap.thinking .reactor-ring--1 { animation-duration: 4s; }
+  .orb-wrap.thinking .reactor-ring--3 { animation-duration: 2s; }
+
+  #wave-canvas { position: absolute; width: 96px; height: 48px; opacity: 0; transition: opacity .2s var(--ease); pointer-events: none; }
+  .orb-btn.listening #wave-canvas, .orb-btn.speaking #wave-canvas { opacity: 1; }
+  .orb-btn.listening svg, .orb-btn.speaking svg { opacity: 0; }
+
+  .thinking-dots { position: absolute; display: none; gap: 5px; }
+  .orb-btn.thinking .thinking-dots { display: flex; }
+  .orb-btn.thinking svg { display: none; }
+  .thinking-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); animation: dot-bounce 1s ease-in-out infinite; }
+  .thinking-dots span:nth-child(2) { animation-delay: .15s; }
+  .thinking-dots span:nth-child(3) { animation-delay: .3s; }
+  @keyframes dot-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-6px); opacity: 1; } }
+
+  .orb-status { margin-top: 1.3rem; font-family: var(--font-term); font-size: .84rem; color: var(--text-dim); text-align: center; min-height: 1.4em; display: flex; align-items: center; gap: .55rem; letter-spacing: .02em; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+  .status-dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-dot 1.3s ease-in-out infinite; }
+  .status-dot.warn { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .status-dot.think { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse-dot 0.8s ease-in-out infinite; }
+  @keyframes pulse-dot { 50% { opacity: 0.3; } }
+
+  .hint { margin-top: .5rem; font-size: .74rem; color: var(--text-faint); text-align: center; letter-spacing: .02em; }
+  .hint kbd { font-family: var(--font-mono); background: var(--panel); border: 1px solid var(--border); padding: .1rem .4rem; border-radius: 3px; font-size: .7rem; color: var(--green); }
+
+  /* Text input fallback */
+  .text-input-row { width: 100%; max-width: 640px; display: flex; gap: .5rem; margin-top: 1.3rem; }
+  .text-input-row input {
+    flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: .8rem .9rem; border-radius: 4px; font-family: var(--font-mono); font-size: .85rem; min-height: 44px;
+  }
+  .text-input-row input:focus { border-color: var(--green-dim); }
+  .text-input-row button {
+    background: var(--panel); border: 1px solid var(--border-bright); color: var(--green);
+    padding: 0 1.1rem; border-radius: 4px; font-weight: 600; min-height: 44px; letter-spacing: .04em;
+  }
+  .text-input-row button:hover { background: rgba(57,255,106,0.08); }
+
+  /* ---------------- Transcript ---------------- */
+  .transcript-panel { width: 100%; max-width: 640px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; margin-top: 1.6rem; backdrop-filter: blur(6px); display: flex; flex-direction: column; overflow: hidden; }
+  .transcript-head { display: flex; justify-content: space-between; align-items: center; padding: .7rem 1rem; border-bottom: 1px solid var(--border); background: rgba(57,255,106,0.03); }
+  .transcript-head h2 { font-family: var(--font-term); font-size: .78rem; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase; margin: 0; display: flex; align-items: center; gap: .5rem; }
+  .transcript-head h2::before { content: '>_'; color: var(--green); }
+  .clear-btn { font-family: var(--font-mono); font-size: .68rem; color: var(--text-faint); padding: .35rem .55rem; border-radius: 3px; transition: color .18s var(--ease), background .18s var(--ease); border: 1px solid transparent; }
+  .clear-btn:hover { color: var(--red); background: rgba(255,59,78,0.08); border-color: rgba(255,59,78,0.3); }
+
+  .transcript-log { padding: .9rem 1rem; max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: .55rem; font-size: .84rem; }
+  .transcript-empty { text-align: center; color: var(--text-faint); font-family: var(--font-term); font-size: .8rem; padding: 1.6rem 0; }
+
+  .line { display: flex; gap: .5rem; line-height: 1.5; animation: line-in .18s var(--ease); }
+  @keyframes line-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+  .line .prompt { flex-shrink: 0; font-weight: 700; }
+  .line--user .prompt { color: var(--amber); }
+  .line--echo .prompt { color: var(--green); }
+  .line--error .prompt { color: var(--red); }
+  .line--user .text { color: var(--text); }
+  .line--echo .text { color: var(--text-dim); }
+  .line--error .text { color: #ff9aa5; }
+
+  /* ---------------- Chips ---------------- */
+  .chips { width: 100%; max-width: 640px; display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.3rem; justify-content: center; }
+  .chip { font-family: var(--font-mono); font-size: .7rem; color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-radius: 3px; padding: .5rem .8rem; transition: border-color .18s var(--ease), color .18s var(--ease); min-height: 36px; letter-spacing: .02em; }
+  .chip::before { content: '$ '; color: var(--green-dim); }
+  .chip:hover { border-color: var(--green-dim); color: #fff; }
+
+  .unsupported { width: 100%; max-width: 640px; background: rgba(255,59,78,0.08); border: 1px solid rgba(255,59,78,0.35); border-radius: 6px; padding: .9rem 1rem; font-size: .8rem; color: #ff9aa5; margin-top: 1.4rem; display: none; font-family: var(--font-mono); }
+  .unsupported.show { display: block; }
+  .unsupported::before { content: '[!] '; color: var(--red); }
+
+  footer { margin-top: 2rem; font-size: .68rem; color: var(--text-faint); text-align: center; max-width: 480px; letter-spacing: .02em; line-height: 1.6; }
+
+  /* ---------------- Settings modal ---------------- */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(1,3,2,0.85); backdrop-filter: blur(3px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1.2rem; }
+  .modal-overlay[hidden] { display: none; }
+  .modal { position: relative; background: var(--panel-solid); border: 1px solid var(--border-bright); border-radius: 8px; max-width: 480px; width: 100%; max-height: 88vh; overflow-y: auto; padding: 1.6rem; box-shadow: 0 0 60px rgba(57,255,106,0.1); }
+  .modal h2 { font-family: var(--font-term); font-size: 1rem; color: var(--green); letter-spacing: .06em; margin-bottom: .4rem; }
+  .modal .modal-sub { font-size: .76rem; color: var(--text-faint); margin-bottom: 1.3rem; line-height: 1.5; }
+  .modal-close { position: absolute; top: 1rem; right: 1rem; color: var(--text-dim); font-size: 1.1rem; }
+  .field-group { margin-bottom: 1.1rem; }
+  .field-group label { display: block; font-size: .72rem; color: var(--text-dim); letter-spacing: .05em; margin-bottom: .4rem; text-transform: uppercase; }
+  .field-group input {
+    width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: .7rem .8rem; border-radius: 4px; font-family: var(--font-mono); font-size: .82rem; min-height: 44px;
+  }
+  .field-group input:focus { border-color: var(--green-dim); }
+  .field-hint { font-size: .68rem; color: var(--text-faint); margin-top: .35rem; }
+  .field-hint a { color: var(--cyan); }
+  .provider-toggle { display: flex; gap: .5rem; margin-bottom: 1.3rem; }
+  .provider-toggle button {
+    flex: 1; padding: .7rem; border: 1px solid var(--border); border-radius: 4px; background: var(--panel);
+    color: var(--text-dim); font-size: .78rem; letter-spacing: .03em; transition: all .18s var(--ease);
+  }
+  .provider-toggle button.active { border-color: var(--green); color: var(--green); background: rgba(57,255,106,0.06); }
+  .save-btn {
+    width: 100%; background: var(--green); color: #04140a; font-weight: 700; padding: .85rem;
+    border-radius: 4px; font-family: var(--font-mono); font-size: .82rem; letter-spacing: .05em; min-height: 46px;
+    transition: box-shadow .18s var(--ease);
+  }
+  .save-btn:hover { box-shadow: 0 0 24px rgba(57,255,106,0.4); }
+  .key-status { font-size: .7rem; margin-top: .6rem; display: flex; align-items: center; gap: .4rem; }
+  .key-status.ok { color: var(--green); }
+  .key-status.missing { color: var(--text-faint); }
+
+  @media (max-width: 480px) {
+    .orb-wrap { width: 168px; height: 168px; }
+    .orb-btn { width: 118px; height: 118px; }
+    .brand h1 { font-size: .98rem; }
+    .readout-strip { grid-template-columns: 1fr 1fr; }
+    .readout:nth-child(3) { grid-column: span 2; }
+    .transcript-log { max-height: 320px; }
+    .text-input-row { flex-direction: column; }
+    .text-input-row button { min-height: 44px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="matrix-canvas" aria-hidden="true"></canvas>
+<div class="scanlines" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+
+<div id="boot-screen">
+  <div id="boot-log"></div>
+</div>
+
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">J</div>
+    <div>
+      <h1>JARVIS<span class="blink-cursor">_</span></h1>
+      <p class="brand-sub">NEURAL_UPLINK // v3.0</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <select id="provider-select" class="provider-select" aria-label="AI provider">
+      <option value="anthropic">CLAUDE</option>
+      <option value="openai">CHATGPT</option>
+    </select>
+    <select id="lang-select" class="provider-select" aria-label="Voice language">
+      <option value="en-US">EN</option>
+      <option value="hi-IN">HI</option>
+      <option value="ur-PK">UR</option>
+    </select>
+    <button class="icon-btn" id="settings-btn" aria-label="Open settings" aria-haspopup="dialog">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V19a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H4a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H10a1.65 1.65 0 0 0 1-1.51V4a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V10a1.65 1.65 0 0 0 1.51 1H20a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="1.7"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="readout-strip" aria-hidden="true">
+  <div class="readout"><span class="label">UPLINK</span><span class="value idle" id="readout-uplink">STANDBY</span></div>
+  <div class="readout"><span class="label">MODEL</span><span class="value" id="readout-model">CLAUDE</span></div>
+  <div class="readout"><span class="label">SESSION</span><span class="value" id="readout-session">0 CMDS</span></div>
+</div>
+
+<main class="orb-stage">
+  <div class="orb-wrap" id="orb-wrap">
+    <div class="reactor-ring reactor-ring--1" aria-hidden="true"></div>
+    <div class="reactor-ring reactor-ring--2" aria-hidden="true"></div>
+    <div class="reactor-ring reactor-ring--3" aria-hidden="true"></div>
+    <button class="orb-btn" id="orb-btn" aria-label="Tap to speak" aria-pressed="false">
+      <div class="plasma-blob" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="hud-corners" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="9" y="2" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <canvas id="wave-canvas" width="96" height="48"></canvas>
+      <div class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+    </button>
+  </div>
+
+  <p class="orb-status" id="orb-status"><span class="status-dot" id="status-dot"></span><span id="status-text">SYSTEM READY — TAP TO SPEAK</span></p>
+  <p class="hint">or press <kbd>SPACE</kbd> to talk</p>
+
+  <div class="unsupported" id="unsupported-banner" role="alert">
+    Speech recognition unavailable in this browser context. JARVIS requires Chrome/Edge on desktop or Android, served over HTTPS. Safari/iOS support is limited — use the text box below instead.
+  </div>
+
+  <div class="text-input-row">
+    <label for="text-input" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;">Type a message</label>
+    <input type="text" id="text-input" placeholder="…or type a command and hit enter">
+    <button id="text-send">SEND</button>
+  </div>
+
+  <section class="transcript-panel" aria-label="Conversation log">
+    <div class="transcript-head">
+      <h2>session_log.txt</h2>
+      <button class="clear-btn" id="clear-btn">clear</button>
+    </div>
+    <div class="transcript-log" id="transcript-log">
+      <p class="transcript-empty" id="transcript-empty">// no API key configured — tap ⚙ Settings to connect Claude or ChatGPT</p>
+    </div>
+  </section>
+
+  <div class="chips" id="chips" aria-label="Example commands">
+    <button class="chip" data-cmd="what time is it">what time is it</button>
+    <button class="chip" data-cmd="explain quantum computing simply">explain quantum computing</button>
+    <button class="chip" data-cmd="tell me a joke">tell me a joke</button>
+    <button class="chip" data-cmd="write a short poem about the ocean">write a poem</button>
+    <button class="chip" data-cmd="what's a good recipe for pasta">recipe for pasta</button>
+    <button class="chip" data-cmd="who are you">who are you</button>
+  </div>
+</main>
+
+<footer>
+  JARVIS talks to your chosen AI provider through your own backend using your own API key — nothing is stored on any third-party server. Best experienced in Chrome, Edge, or Android browsers over HTTPS.
+</footer>
+
+<!-- ============ SETTINGS MODAL ============ -->
+<div class="modal-overlay" id="settings-modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="modal">
+    <button class="modal-close icon-btn" id="settings-close" aria-label="Close settings">✕</button>
+    <h2 id="settings-title">SYSTEM CONFIG</h2>
+    <p class="modal-sub">Connect JARVIS to your own AI account. Keys are stored only in this browser's local storage and sent only to your own backend server — never hardcoded, never shared.</p>
+
+    <div class="field-group">
+      <label for="anthropic-key-input">Anthropic (Claude) API Key</label>
+      <input type="password" id="anthropic-key-input" placeholder="sk-ant-…" autocomplete="off">
+      <p class="field-hint">Get one at <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a></p>
+      <p class="key-status missing" id="anthropic-status">not configured</p>
+    </div>
+
+    <div class="field-group">
+      <label for="openai-key-input">OpenAI (ChatGPT) API Key</label>
+      <input type="password" id="openai-key-input" placeholder="sk-…" autocomplete="off">
+      <p class="field-hint">Get one at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a></p>
+      <p class="key-status missing" id="openai-status">not configured</p>
+    </div>
+
+    <div class="field-group">
+      <label for="backend-url-input">Backend URL</label>
+      <input type="text" id="backend-url-input" placeholder="http://localhost:5000">
+      <p class="field-hint">The Flask server (app.py) this page talks to. Defaults to this page's own origin.</p>
+    </div>
+
+    <button class="save-btn" id="settings-save">SAVE CONFIGURATION</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= Matrix rain background ================= */
+  (function initMatrix() {
+    const canvas = document.getElementById('matrix-canvas');
+    const ctx = canvas.getContext('2d');
+    let w, h, cols, drops;
+    const chars = 'アイウエオカキクケコサシスセソ01αβγδΣΞ<>/\\{}[]#$';
+
+    function resize() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+      cols = Math.floor(w / 16);
+      drops = new Array(cols).fill(0).map(() => Math.random() * -50);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return;
+
+    function draw() {
+      ctx.fillStyle = 'rgba(3,5,9,0.08)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#00aaff';
+      ctx.font = '14px monospace';
+      for (let i = 0; i < cols; i++) {
+        const char = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillText(char, i * 16, drops[i] * 16);
+        if (drops[i] * 16 > h && Math.random() > 0.975) drops[i] = 0;
+        drops[i]++;
+      }
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+  })();
+
+  /* ================= Boot sequence ================= */
+  (function boot() {
+    const bootScreen = document.getElementById('boot-screen');
+    const bootLog = document.getElementById('boot-log');
+    const lines = [
+      { text: 'JARVIS KERNEL v3.0.1 — initializing…', delay: 80 },
+      { text: '[ OK ] loading audio subsystem', delay: 160 },
+      { text: '[ OK ] mounting speech synthesis module', delay: 130 },
+      { text: '[ OK ] calibrating mic input', delay: 150 },
+      { text: '[ OK ] checking neural link credentials', delay: 140 },
+      { text: '[ OK ] no telemetry — keys never leave your backend', delay: 150 },
+      { text: 'system ready.', delay: 200 },
+    ];
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) { bootScreen.classList.add('hidden'); return; }
+
+    let html = '';
+    let i = 0;
+    function typeLine() {
+      if (i >= lines.length) { setTimeout(() => bootScreen.classList.add('hidden'), 350); return; }
+      const line = lines[i];
+      const cls = line.text.startsWith('[ OK ]') ? 'ok' : (i === 0 ? 'dim' : '');
+      html += `<div class="${cls}">${line.text}</div>`;
+      bootLog.innerHTML = html + '<span class="boot-cursor"></span>';
+      i++;
+      setTimeout(typeLine, line.delay);
+    }
+    typeLine();
+  })();
+
+  /* ================= State & config ================= */
+  const $ = (id) => document.getElementById(id);
+  const orbBtn = $('orb-btn');
+  const statusText = $('status-text');
+  const statusDot = $('status-dot');
+  const log = $('transcript-log');
+  const langSelect = $('lang-select');
+  const providerSelect = $('provider-select');
+  const unsupportedBanner = $('unsupported-banner');
+  const clearBtn = $('clear-btn');
+  const chips = $('chips');
+  const readoutUplink = $('readout-uplink');
+  const readoutModel = $('readout-model');
+  const readoutSession = $('readout-session');
+  const waveCanvas = $('wave-canvas');
+  const waveCtx = waveCanvas.getContext('2d');
+  const textInput = $('text-input');
+  const textSend = $('text-send');
+
+  const settingsBtn = $('settings-btn');
+  const settingsModal = $('settings-modal');
+  const settingsClose = $('settings-close');
+  const settingsSave = $('settings-save');
+  const anthropicKeyInput = $('anthropic-key-input');
+  const openaiKeyInput = $('openai-key-input');
+  const backendUrlInput = $('backend-url-input');
+  const anthropicStatus = $('anthropic-status');
+  const openaiStatus = $('openai-status');
+
+  const CONFIG = {
+    anthropicKey: localStorage.getItem('jarvis_anthropic_key') || '',
+    openaiKey: localStorage.getItem('jarvis_openai_key') || '',
+    backendUrl: localStorage.getItem('jarvis_backend_url') || window.location.origin,
+    provider: localStorage.getItem('jarvis_provider') || 'anthropic',
+  };
+
+  const conversationHistory = []; // { role: 'user'|'assistant', content }
+  let cmdCount = 0;
+
+  function refreshKeyStatus() {
+    anthropicStatus.textContent = CONFIG.anthropicKey ? '✓ configured' : 'not configured';
+    anthropicStatus.className = `key-status ${CONFIG.anthropicKey ? 'ok' : 'missing'}`;
+    openaiStatus.textContent = CONFIG.openaiKey ? '✓ configured' : 'not configured';
+    openaiStatus.className = `key-status ${CONFIG.openaiKey ? 'ok' : 'missing'}`;
+  }
+
+  function loadConfigIntoModal() {
+    anthropicKeyInput.value = CONFIG.anthropicKey;
+    openaiKeyInput.value = CONFIG.openaiKey;
+    backendUrlInput.value = CONFIG.backendUrl;
+    refreshKeyStatus();
+  }
+
+  providerSelect.value = CONFIG.provider;
+  readoutModel.textContent = CONFIG.provider === 'anthropic' ? 'CLAUDE' : 'CHATGPT';
+
+  providerSelect.addEventListener('change', () => {
+    CONFIG.provider = providerSelect.value;
+    localStorage.setItem('jarvis_provider', CONFIG.provider);
+    readoutModel.textContent = CONFIG.provider === 'anthropic' ? 'CLAUDE' : 'CHATGPT';
+  });
+
+  settingsBtn.addEventListener('click', () => { loadConfigIntoModal(); settingsModal.hidden = false; });
+  settingsClose.addEventListener('click', () => { settingsModal.hidden = true; });
+  settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) settingsModal.hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !settingsModal.hidden) settingsModal.hidden = true; });
+
+  settingsSave.addEventListener('click', () => {
+    CONFIG.anthropicKey = anthropicKeyInput.value.trim();
+    CONFIG.openaiKey = openaiKeyInput.value.trim();
+    CONFIG.backendUrl = backendUrlInput.value.trim() || window.location.origin;
+    localStorage.setItem('jarvis_anthropic_key', CONFIG.anthropicKey);
+    localStorage.setItem('jarvis_openai_key', CONFIG.openaiKey);
+    localStorage.setItem('jarvis_backend_url', CONFIG.backendUrl);
+    refreshKeyStatus();
+    settingsModal.hidden = true;
+    setStatus('CONFIGURATION SAVED', 'live');
+    setTimeout(() => setStatus('SYSTEM READY — TAP TO SPEAK', null), 1800);
+  });
+
+  if (!CONFIG.anthropicKey && !CONFIG.openaiKey) {
+    setTimeout(() => { loadConfigIntoModal(); settingsModal.hidden = false; }, 1600);
+  }
+
+  /* ================= Helpers ================= */
+  const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const synth = window.speechSynthesis;
+  let recognition = null;
+  let isListening = false;
+  let isSpeaking = false;
+  let isThinking = false;
+  let waveAnimId = null;
+
+  function setStatus(text, mode) {
+    statusText.textContent = text;
+    statusDot.classList.remove('live', 'warn', 'think');
+    if (mode) statusDot.classList.add(mode);
+  }
+
+  const orbWrap = $('orb-wrap');
+  function setOrbMode(mode) {
+    orbBtn.classList.remove('listening', 'speaking', 'thinking');
+    orbWrap.classList.remove('listening', 'speaking', 'thinking');
+    if (mode) { orbBtn.classList.add(mode); orbWrap.classList.add(mode); }
+  }
+
+  function addLine(role, text) {
+    const empty = document.getElementById('transcript-empty');
+    if (empty) empty.remove();
+    const el = document.createElement('div');
+    const roleClass = role === 'user' ? 'user' : (role === 'error' ? 'error' : 'echo');
+    const promptText = role === 'user' ? 'you@jarvis:~$' : (role === 'error' ? 'error:~$' : 'jarvis@ai:~$');
+    el.className = `line line--${roleClass}`;
+    el.innerHTML = `<span class="prompt">${promptText}</span><span class="text">${escapeHTML(text)}</span>`;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  clearBtn.addEventListener('click', () => {
+    log.innerHTML = '<p class="transcript-empty" id="transcript-empty">// log cleared — awaiting input</p>';
+    conversationHistory.length = 0;
+    cmdCount = 0;
+    readoutSession.textContent = '0 CMDS';
+  });
+
+  /* ================= Waveform visualizer ================= */
+  function startWave() {
+    const bars = 14;
+    let phase = 0;
+    function draw() {
+      waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+      const barWidth = waveCanvas.width / bars;
+      for (let i = 0; i < bars; i++) {
+        const amp = isSpeaking ? (Math.sin(phase * 0.18 + i * 0.6) * 0.4 + 0.55) : (Math.random() * 0.6 + 0.25);
+        const height = Math.max(3, amp * waveCanvas.height);
+        const x = i * barWidth + barWidth * 0.25;
+        const y = (waveCanvas.height - height) / 2;
+        waveCtx.fillStyle = isSpeaking ? '#ffb020' : '#39ff6a';
+        waveCtx.fillRect(x, y, barWidth * 0.5, height);
+      }
+      phase++;
+      waveAnimId = requestAnimationFrame(draw);
+    }
+    draw();
+  }
+  function stopWave() {
+    if (waveAnimId) cancelAnimationFrame(waveAnimId);
+    waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+  }
+
+  /* ================= Speech synthesis ================= */
+  function speak(text, lang) {
+    if (!synth) return;
+    synth.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = lang || langSelect.value;
+    utter.rate = 1.03;
+    utter.pitch = 0.92;
+    utter.onstart = () => {
+      isSpeaking = true;
+      setOrbMode('speaking');
+      setStatus('TRANSMITTING RESPONSE…', 'live');
+      startWave();
+    };
+    utter.onend = () => {
+      isSpeaking = false;
+      setOrbMode(null);
+      setStatus('SYSTEM READY — TAP TO SPEAK', null);
+      readoutUplink.textContent = 'STANDBY';
+      readoutUplink.classList.add('idle');
+      stopWave();
+    };
+    synth.speak(utter);
+  }
+
+  /* ================= AI call ================= */
+  async function askAI(message) {
+    const provider = CONFIG.provider;
+    const apiKey = provider === 'anthropic' ? CONFIG.anthropicKey : CONFIG.openaiKey;
+
+    if (!apiKey) {
+      addLine('error', `No ${provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key configured. Tap ⚙ Settings to add one.`);
+      setStatus('MISSING API KEY', 'warn');
+      return;
+    }
+
+    isThinking = true;
+    setOrbMode('thinking');
+    setStatus('PROCESSING…', 'think');
+
+    try {
+      const res = await fetch(`${CONFIG.backendUrl.replace(/\/$/, '')}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          api_key: apiKey,
+          message,
+          history: conversationHistory,
+        }),
+      });
+
+      const data = await res.json();
+      isThinking = false;
+      setOrbMode(null);
+
+      if (!res.ok) {
+        addLine('error', data.error || 'Request failed.');
+        setStatus('REQUEST FAILED', 'warn');
+        return;
+      }
+
+      const reply = data.reply || '(empty response)';
+      conversationHistory.push({ role: 'user', content: message });
+      conversationHistory.push({ role: 'assistant', content: reply });
+      addLine('echo', reply);
+      speak(reply);
+    } catch (err) {
+      isThinking = false;
+      setOrbMode(null);
+      addLine('error', `Couldn't reach backend at ${CONFIG.backendUrl}. Is app.py running?`);
+      setStatus('BACKEND UNREACHABLE', 'warn');
+    }
+  }
+
+  function handleCommand(raw) {
+    const text = raw.trim();
+    if (!text) return;
+    addLine('user', text);
+    cmdCount++;
+    readoutSession.textContent = `${cmdCount} CMD${cmdCount === 1 ? '' : 'S'}`;
+    askAI(text);
+  }
+
+  /* ================= Speech recognition ================= */
+  function initRecognition() {
+    if (!SpeechRecognitionAPI) {
+      unsupportedBanner.classList.add('show');
+      orbBtn.disabled = true;
+      orbBtn.style.opacity = '0.4';
+      orbBtn.style.cursor = 'not-allowed';
+      setStatus('SPEECH API UNAVAILABLE — USE TEXT INPUT', 'warn');
+      return;
+    }
+
+    recognition = new SpeechRecognitionAPI();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      isListening = true;
+      setOrbMode('listening');
+      orbBtn.setAttribute('aria-pressed', 'true');
+      setStatus('LISTENING…', 'live');
+      readoutUplink.textContent = 'ACTIVE';
+      readoutUplink.classList.remove('idle');
+      startWave();
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      handleCommand(transcript);
+    };
+
+    recognition.onerror = (event) => {
+      let msg = 'ERROR — retry input';
+      if (event.error === 'no-speech') msg = 'NO INPUT DETECTED — retry';
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') msg = 'MIC ACCESS DENIED — check permissions';
+      setStatus(msg, 'warn');
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      orbBtn.setAttribute('aria-pressed', 'false');
+      if (!isSpeaking && !isThinking) setOrbMode(null);
+      stopWave();
+      if (!isSpeaking && !isThinking) {
+        setStatus('SYSTEM READY — TAP TO SPEAK', null);
+        readoutUplink.textContent = 'STANDBY';
+        readoutUplink.classList.add('idle');
+      }
+    };
+  }
+
+  function toggleListening() {
+    if (!recognition) return;
+    if (isListening) { recognition.stop(); return; }
+    if (isSpeaking) synth.cancel();
+    recognition.lang = langSelect.value;
+    try { recognition.start(); } catch (e) { /* ignore duplicate-start */ }
+  }
+
+  orbBtn.addEventListener('click', toggleListening);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !['INPUT', 'SELECT', 'BUTTON', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+      e.preventDefault();
+      toggleListening();
+    }
+  });
+
+  chips.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-cmd]');
+    if (!chip) return;
+    handleCommand(chip.dataset.cmd);
+  });
+
+  textSend.addEventListener('click', () => {
+    const val = textInput.value;
+    if (!val.trim()) return;
+    handleCommand(val);
+    textInput.value = '';
+  });
+  textInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); textSend.click(); }
+  });
+
+  initRecognition();
+  if (SpeechRecognitionAPI) setStatus('SYSTEM READY — TAP TO SPEAK', null);
+})();
+</script>
+</body>
+</html>
